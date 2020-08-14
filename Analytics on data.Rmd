@@ -1,0 +1,717 @@
+---
+title: "Kajabi Data"
+author: "Nick Hall"
+date: "7/20/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+#Loading in packages and data set
+library(dplyr)
+library(ggplot2)
+df <- read.csv("Raw Data Kajabi.csv", stringsAsFactors = F)
+```
+
+
+```{r, echo=FALSE}
+#Checking initial reason why most people terminate their subscriptions
+termination_reason <- df %>% 
+  select(cancellation_reason, cancellation_initiated_at) %>% 
+  filter(cancellation_reason != "")
+```
+
+```{r, echo=FALSE}
+#Cleaning up data
+termination_reason[11049, 1] <- c("Billing is cleaning up accounts that are inactive or not paying us")
+termination_reason[11050, 1] <- c("Billing is cleaning up accounts that are inactive or not paying us")
+termination_reason[332,1] <- c("other")
+termination_reason[536,1] <- c("other")
+
+for (i in 1:nrow(termination_reason)) {
+  if(termination_reason[i,1] == "not ready") {
+    termination_reason[i,1] <- c("not_ready")
+  } else {
+    NULL
+  }
+}
+```
+
+
+```{r, echo=FALSE}
+#Getting a count of each reasoning people have canceled & removing accounts that have been canceled by Kajabi
+tallyOfReasons <- termination_reason %>% 
+  filter(cancellation_reason != "Billing is cleaning up accounts that are inactive or not paying us") %>% 
+  group_by(cancellation_reason) %>% 
+  tally()
+```
+
+```{r}
+canceled_before_trial_end <- df %>% 
+  filter(Cancelled.During.Trial. == "Yes")
+```
+
+
+```{r, echo=FALSE}
+#Renaming reasons for better display on graph
+tallyOfReasons[1,1] <- c("Abuse")
+tallyOfReasons[2,1] <- c("Another Product")
+tallyOfReasons[3,1] <- c("Features")
+tallyOfReasons[4,1] <- c("Not Ready")
+tallyOfReasons[5,1] <- c("Other")
+tallyOfReasons[6,1] <- c("Price")
+tallyOfReasons[7,1] <- c("Unsupported Language or Translation")
+
+```
+
+## Pie Charts
+
+```{r, echo=FALSE}
+#Graphing the reasons why people cancel their memberships
+graph_full <- tallyOfReasons %>% 
+  arrange(desc(cancellation_reason)) %>%
+  mutate(prop = n / sum(tallyOfReasons$n) * 100) %>% 
+  mutate(ypos = cumsum(prop) - 0.5*prop)
+
+colnames(graph_full) <- c("Cancellation_Reason", "Total", "prop", "ypos")
+
+graph_full$prop = round(graph_full$prop, 1)
+
+ggplot(graph_full, aes(x = "", y = prop, fill = Cancellation_Reason)) +
+  geom_bar(stat = "identity", width = 1, color = "white") +
+  coord_polar(theta = "y", start = 0) +
+  theme_void()  +
+  geom_text(aes(y = ypos, label = prop), color = "white", size = 4, ) + 
+  scale_fill_brewer(palette = "Set2")
+nrow(termination_reason)
+min(termination_reason$cancellation_initiated_at)
+max(termination_reason$cancellation_initiated_at)
+```
+
+**Graph 1.1**
+A majority of the users are canceling because they are not ready (35.9%). The next two leading reasons are other and the price (23.8% and 22.6% respectively).
+
+
+```{r, echo=FALSE}
+#Creating a separate data set for people who made Revenue from Kajabi
+Customers_with_Revenue <- df %>% 
+  select(Trial.Duration, Days.Since.Acct.Creation, Cancelled.During.Trial., plan_name, kajabi_stripe_revenue_in_dollars, cancellation_reason, cancellation_comment, cancellation_initiated_at) %>% 
+  filter(kajabi_stripe_revenue_in_dollars > 0.00)
+```
+
+
+```{r, echo=FALSE}
+#Checking to see the percentage of people that turned a Revenue who canceled
+perc_prof <- nrow(Customers_with_Revenue) / nrow(df) * 100
+perc_prof
+nrow(Customers_with_Revenue)
+```
+32.69% of customers who canceled had made some revenue. I will try and determine the percentage of these people that turned a Revenue by estimating their costs by what plan they were on.
+
+```{r, echo=FALSE}
+#Checking to see the reasons why the people that had made revenue canceled their subscriptions
+
+Reason_for_termination <- Customers_with_Revenue %>% 
+  select(cancellation_reason, cancellation_initiated_at) %>% 
+  group_by(cancellation_reason)
+
+Reason_for_termination[108,1] <- c("other")
+
+Reason_for_termination <- Reason_for_termination %>% 
+  group_by(cancellation_reason) %>% 
+  tally()
+```
+
+
+```{r, echo=FALSE}
+#Renaming the reasons for a better look on the graph
+Reason_for_termination[1,1] <- c("No Response")
+Reason_for_termination[2,1] <- c("Abuse")
+Reason_for_termination[3,1] <- c("Another Product")
+Reason_for_termination[4,1] <- c("Features")
+Reason_for_termination[5,1] <- c("Not Ready")
+Reason_for_termination[6,1] <- c("Other")
+Reason_for_termination[7,1] <- c("Price")
+Reason_for_termination[8,1] <- c("Unsupported Language or Translation")
+```
+
+I am going to be removing the responses that did not give a reason on cancelation, because they are useless for analysis.
+```{r, echo=FALSE}
+#Filtering out the no responses, because they provide no value in analysis
+Reason_for_termination <- Reason_for_termination %>% 
+  filter(cancellation_reason != "No Response")
+```
+
+
+```{r, echo=FALSE}
+#Making the graph to look at why people canceled even though they were making a Revenue
+graph <- Reason_for_termination %>% 
+  arrange(desc(cancellation_reason)) %>%
+  mutate(prop = n / sum(Reason_for_termination$n) * 100) %>% 
+  mutate(ypos = cumsum(prop) - 0.5*prop)
+
+colnames(graph) <- c("Cancellation_Reason", "Total", "prop", "ypos")
+
+graph$prop = round(graph$prop, 1)
+
+ggplot(graph, aes(x = "", y = prop, fill = Cancellation_Reason)) +
+  geom_bar(stat = "identity", width = 1, color = "white") +
+  coord_polar(theta = "y", start = 0) +
+  theme_void()  +
+  geom_text(aes(y = ypos, label = prop), color = "white", size = 4, ) + 
+  scale_fill_brewer(palette = "Set2")
+nrow(Customers_with_Revenue)
+min(Customers_with_Revenue$cancellation_initiated_at)
+max(Customers_with_Revenue$cancellation_initiated_at)
+```
+**Graph 1.2**
+For the people that canceled while they were making a revenue, the majority canceled due to not being ready to bring their product to market. The following two most popular reasonings was that the client selected other and that they felt the price was too high.
+
+
+```{r, echo=FALSE}
+#Checking too see how many of the clients that made money canceled during their trial period
+Revenue_cancel_pre <- Customers_with_Revenue %>% 
+  filter(Cancelled.During.Trial. == "Yes")
+
+Revenue_cancel_post <- Customers_with_Revenue %>% 
+  filter(Cancelled.During.Trial. == "No")
+
+canceled_before_trial_end <- nrow(Revenue_cancel_pre) / nrow(Revenue_cancel_post) * 100
+canceled_before_trial_end
+```
+About 0.22% of people who made revenue canceled before their trial ended.
+
+
+```{r, echo=FALSE}
+#Looking at the reasons why these people canceled before their trial ended even though they were making money
+reason_for_trial_termination <- Revenue_cancel_pre %>% 
+  select(cancellation_reason, cancellation_initiated_at) %>% 
+  group_by(cancellation_reason) %>% 
+  tally()
+```
+
+```{r, echo=FALSE}
+#Renaming rows for easier reading of graphs
+reason_for_trial_termination[1,1] <- c("No Response")
+reason_for_trial_termination[2,1] <- c("Another Product")
+reason_for_trial_termination[3,1] <- c("Features")
+reason_for_trial_termination[4,1] <- c("Not Ready")
+reason_for_trial_termination[5,1] <- c("Other")
+reason_for_trial_termination[6,1] <- c("Price")
+```
+
+```{r, echo=FALSE}
+reason_for_trial_termination <- reason_for_trial_termination %>% 
+  filter(cancellation_reason != "No Response")
+```
+
+
+```{r, echo=FALSE}
+#Making a pie chart for the reasons why people who are making a Revenue are leaving
+graph_data <- reason_for_trial_termination %>% 
+  arrange(desc(cancellation_reason)) %>%
+  mutate(prop = n / sum(reason_for_trial_termination$n) * 100) %>% 
+  mutate(ypos = cumsum(prop) - 0.5*prop)
+
+
+
+colnames(graph_data) <- c("Cancellation_Reason", "Total", "prop", "ypos")
+
+graph_data$prop = round(graph_data$prop, 1)
+
+ggplot(graph_data, aes(x = "", y = prop, fill = Cancellation_Reason)) +
+  geom_bar(stat = "identity", width = 1, color = "white") +
+  coord_polar(theta = "y", start = 0) +
+  theme_void()  +
+  geom_text(aes(y = ypos, label = prop), color = "white", size = 4, ) + 
+  scale_fill_brewer(palette = "Set2")
+nrow(Revenue_cancel_pre)
+min(Revenue_cancel_pre$cancellation_initiated_at)
+max(Revenue_cancel_pre$cancellation_initiated_at)
+```
+
+
+**Graph 1.3**
+The pie chart shows why individuals who were making revenue decided to cancel their subscriptions even though they were still in the trial phase. The most common reasoning was that the client was not ready. Tied for second most popular reason was: the client felt the price was too high and other reasons. 
+
+```{r, echo=FALSE}
+#Looking at the clients that said their cancellation was for "other"
+others <- Revenue_cancel_pre %>% 
+  filter(cancellation_reason == "other")
+others_tf <- others %>% 
+  summarise(beginning = min(cancellation_initiated_at), end = max(cancellation_initiated_at))
+```
+
+```{r, echo=FALSE}
+#Characterizing each others comment
+comments <- c("For Summit", "Another account", "For training", "Wrong time", "No use for platform", "For Summit", "Not ready", "For Summit", "Not ready", "Another account", "No comment", "No comment")
+comments <- as.data.frame(comments)
+colnames(comments) <- c("Reasons")
+comment_data <- comments %>% 
+  group_by(Reasons) %>% 
+  tally()
+```
+
+```{r, echo=FALSE}
+comment_data <- comment_data %>% 
+  filter(Reasons != "No comment")
+```
+
+
+```{r, echo=FALSE}
+#Graphing data to see why the people who chose others canceled to get more insight on them
+graph_reason_data <- comment_data %>% 
+  arrange(desc(Reasons)) %>%
+  mutate(prop = n / sum(comment_data$n) * 100) %>% 
+  mutate(ypos = cumsum(prop) - 0.5*prop)
+
+graph_reason_data$prop = round(graph_reason_data$prop, 1)
+
+ggplot(graph_reason_data, aes(x = "", y = prop, fill = Reasons)) +
+  geom_bar(stat = "identity", width = 1, color = "white") +
+  coord_polar(theta = "y", start = 0) +
+  theme_void()  +
+  geom_text(aes(y = ypos, label = prop), color = "white", size = 4, ) + 
+  scale_fill_brewer(palette = "Set2")
+nrow(others)
+others_tf
+```
+
+
+**Graph 1.4**
+This pie chart is looking at those people who were making Revenue, canceled during their trial and chose "other" as their reason for cancellation. I wanted to take a deeper dive into this, because it was tied for the second most popular reasons why people had canceled while still in the trial period. From this I obtained that most of theses people had canceled because they had only made it for the summit, had another account or were just not ready. 
+
+
+```{r, echo=FALSE}
+#Looking at just the people who did not make any money and seeing why they canceled
+no_revenue <- df %>% 
+  filter(kajabi_stripe_revenue_in_dollars == 0)
+```
+
+```{r, echo=FALSE}
+#Fixing the comments
+no_revenue[520,10] <- c("other")
+no_revenue[10429,10] <- c("Billing is cleaning up accounts that are inactive or not paying us")
+no_revenue[10430,10] <- c("Billing is cleaning up accounts that are inactive or not paying us")
+
+for (i in 1:nrow(no_revenue)) {
+  if(no_revenue[i,10] == "Billing is cleaning up a) } ccounts that are inactive or not paying us") {
+    no_revenue[i,10] <- c("Billing is cleaning up accounts that are inactive or not paying us")
+  } else if(no_revenue[i,10] == "not ready") {
+    no_revenue[i,10] <- c("not_ready")
+  } else {
+    NULL
+  }
+}
+```
+
+```{r, echo=FALSE}
+#Creating a count for the reasons why the people making no profit are canceling.
+reason_for_no_revenue_termination <- no_revenue %>% 
+  filter(cancellation_reason != "Billing is cleaning up accounts that are inactive or not paying us" & cancellation_reason != "") %>% 
+  select(cancellation_reason, cancellation_initiated_at) %>% 
+  group_by(cancellation_reason) %>% 
+  tally()
+```
+
+```{r, echo=FALSE}
+#Renaming reasons for better look on graph
+reason_for_no_revenue_termination[1,1] <- c("Abuse")
+reason_for_no_revenue_termination[2,1] <- c("Another Product")
+reason_for_no_revenue_termination[3,1] <- c("Features")
+reason_for_no_revenue_termination[4,1] <- c("Not Ready")
+reason_for_no_revenue_termination[5,1] <- c("Other")
+reason_for_no_revenue_termination[6,1] <- c("Price")
+reason_for_no_revenue_termination[7,1] <- c("Unsupported Language or Translation")
+```
+
+```{r, echo=FALSE}
+#Graphing the reasons why people cancel with no revenue
+graph_no_rev <- reason_for_no_revenue_termination %>% 
+  arrange(desc(cancellation_reason)) %>%
+  mutate(prop = n / sum(reason_for_no_revenue_termination$n) * 100) %>% 
+  mutate(ypos = cumsum(prop) - 0.5*prop)
+
+colnames(graph_no_rev) <- c("Cancellation_Reason", "Total", "prop", "ypos")
+
+graph_no_rev$prop = round(graph_no_rev$prop, 1)
+
+ggplot(graph_no_rev, aes(x = "", y = prop, fill = Cancellation_Reason)) +
+  geom_bar(stat = "identity", width = 1, color = "white") +
+  coord_polar(theta = "y", start = 0) +
+  theme_void()  +
+  geom_text(aes(y = ypos, label = prop), color = "white", size = 4, ) + 
+  scale_fill_brewer(palette = "Set2")
+nrow(no_revenue)
+min(no_revenue$cancellation_initiated_at)
+max(no_revenue$cancellation_initiated_at)
+```
+
+**Graph 1.5**
+36.3% of users that did not make any revenue are canceling because they are not ready.
+
+
+```{r, echo=FALSE}
+#Determining the breakdown of plans that are canceled
+plans <- df %>% 
+  group_by(plan_name) %>% 
+  tally()
+```
+
+```{r}
+plans <- plans %>%  
+  top_n(5,n)
+```
+
+
+```{r, echo=FALSE}
+#making graph
+graph_plan <- plans %>% 
+  arrange(desc(plan_name)) %>%
+  mutate(prop = n / sum(plans$n) * 100) %>% 
+  mutate(ypos = cumsum(prop) - 0.5*prop)
+
+colnames(graph_plan) <- c("Plan_Name", "Total", "prop", "ypos")
+
+graph_plan$prop = round(graph_plan$prop, 1)
+
+ggplot(graph_plan, aes(x = "", y = prop, fill = Plan_Name)) +
+  geom_bar(stat = "identity", width = 1, color = "white") +
+  coord_polar(theta = "y", start = 0) +
+  theme_void()  +
+  geom_text(aes(y = ypos, label = prop), color = "white", size = 4)
+nrow(df)
+min(df$cancellation_initiated_at)
+max(df$cancellation_initiated_at)
+```
+
+```{r}
+mt <- df %>% 
+  filter(plan_name == "basic_monthly_trial")
+gt <- df %>% 
+  filter(plan_name == "growth_monthly_trial")
+ct <- df %>% 
+  filter(Cancelled.During.Trial. == "Yes")
+nrow(ct) / nrow(df) *100
+```
+
+
+**Graph 1.6**
+
+```{r, echo=FALSE}
+#Figuring out the max of Revenues of people that have canceled
+max <- df %>% 
+  summarise(max = max(kajabi_stripe_revenue_in_dollars))
+avg <- df %>% 
+  summarise(avg = mean(kajabi_stripe_revenue_in_dollars))
+avg_w_revenue <- Customers_with_Revenue %>% 
+  summarise(avg = mean(kajabi_stripe_revenue_in_dollars))
+
+```
+
+
+The average revenue for all users that terminate their account is about \$334.28. While the average revenue for users that were able to make money was about \$1022.66.
+
+
+```{r, echo=FALSE}
+#Breaking the data up to look at individual groups
+First5k <- subset(df,kajabi_stripe_revenue_in_dollars <= 5000 & kajabi_stripe_revenue_in_dollars >= 0)
+second5k <- subset(df, kajabi_stripe_revenue_in_dollars <= 10000 & kajabi_stripe_revenue_in_dollars >= 5000.01)
+third5k <- subset(df, kajabi_stripe_revenue_in_dollars <= 15000 & kajabi_stripe_revenue_in_dollars >= 10000.01)
+forth5k <- subset(df, kajabi_stripe_revenue_in_dollars <= 20000 & kajabi_stripe_revenue_in_dollars >= 15000.01)
+fifth5k <- subset(df, kajabi_stripe_revenue_in_dollars <= 25000 & kajabi_stripe_revenue_in_dollars >= 20000.01)
+```
+
+```{r, echo=FALSE}
+#Finding the number of people per 5000 revenue groups
+PeoplePer5k <- c(nrow(First5k), nrow(second5k), nrow(third5k), nrow(forth5k), nrow(fifth5k))
+labels <- c("$0-5000", "$5000-10000", "$10000-15000", "$15000-20000", "$20000-25000")
+dataFor5k <- data.frame(labels, PeoplePer5k)
+```
+
+# Bar Plots
+
+```{r, echo=FALSE}
+#Creating the graph to look at the distribution of people in different 5k revenue groups up to 25k
+ggplot(data = dataFor5k, aes(y=PeoplePer5k, x = labels)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = PeoplePer5k), vjust = 1.6, color = "white", size = 3) +
+  theme_minimal() +
+  scale_x_discrete(limits = dataFor5k$labels) +
+  labs(x = "Revenue Increments", y = "Number of Users")
+nrow(df)
+min(df$cancellation_initiated_at)
+max(df$cancellation_initiated_at)
+```
+
+**Graph 2.1**
+
+```{r, echo=FALSE}
+#Checking the percent that people cancel before making more than $5000
+nrow(First5k) / nrow(df) * 100
+```
+About 99.58% of clients who terminated their membership did so before they had made more than $5000
+
+```{r}
+#Determining the time frame of data
+time_frame5k <- df %>% 
+  filter(kajabi_stripe_revenue_in_dollars <= 5000)
+```
+
+
+```{r, echo=FALSE}
+#Splitting the data per 1k of revenue
+First1k <- subset(df,kajabi_stripe_revenue_in_dollars <= 1000 & kajabi_stripe_revenue_in_dollars >= 0)
+second1k <- subset(df, kajabi_stripe_revenue_in_dollars <= 2000 & kajabi_stripe_revenue_in_dollars >= 1000.01)
+third1k <- subset(df, kajabi_stripe_revenue_in_dollars <= 3000 & kajabi_stripe_revenue_in_dollars >= 2000.01)
+forth1k <- subset(df, kajabi_stripe_revenue_in_dollars <= 4000 & kajabi_stripe_revenue_in_dollars >= 3000.01)
+fifth1k <- subset(df, kajabi_stripe_revenue_in_dollars <= 5000 & kajabi_stripe_revenue_in_dollars >= 4000.01)
+```
+
+```{r, echo=FALSE}
+#Putting together the data for graphing of the people making revenue in 1k margins up to 5k
+PeoplePer1k <- c(nrow(First1k), nrow(second1k), nrow(third1k), nrow(forth1k), nrow(fifth1k))
+labels1k <- c("$0-1000", "$1000-2000", "$2000-3000", "$3000-4000", "$4000-5000")
+dataFor1k <- data.frame(labels1k, PeoplePer1k)
+```
+
+
+```{r, echo=FALSE}
+#Creating graph to look at the distribution of people per $1,000 groupings
+ggplot(data = dataFor1k, aes(y=PeoplePer1k, x = labels1k)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = PeoplePer1k), vjust = 1.6, color = "white", size = 3) +
+  theme_minimal() +
+  scale_x_discrete(limits = dataFor1k$labels1k) +
+  labs(x = "Revenue Increments", y = "Number of Users")
+nrow(First5k)
+min(time_frame5k$cancellation_initiated_at)
+max(time_frame5k$cancellation_initiated_at)
+```
+
+**Graph 2.2**
+
+```{r, echo=FALSE}
+#Checking the percent of people who are canceling before they make more than $1000
+nrow(First1k) / nrow(df) * 100
+```
+About 89.05% of people are terminating before they make more than $1000.
+
+```{r}
+#Determining the time frame of data
+time_frame1k <- df %>% 
+  filter(kajabi_stripe_revenue_in_dollars <= 1000)
+```
+
+
+```{r, echo=FALSE}
+#Splitting the data per 1k of revenue
+First200 <- subset(df,kajabi_stripe_revenue_in_dollars <= 200 & kajabi_stripe_revenue_in_dollars >= 0)
+second200 <- subset(df, kajabi_stripe_revenue_in_dollars <= 400 & kajabi_stripe_revenue_in_dollars >= 200.01)
+third200 <- subset(df, kajabi_stripe_revenue_in_dollars <= 600 & kajabi_stripe_revenue_in_dollars >= 400.01)
+forth200 <- subset(df, kajabi_stripe_revenue_in_dollars <= 800 & kajabi_stripe_revenue_in_dollars >= 600.01)
+fifth200 <- subset(df, kajabi_stripe_revenue_in_dollars <= 1000 & kajabi_stripe_revenue_in_dollars >= 800.01)
+```
+
+```{r, echo=FALSE}
+#Putting together the data for graphing of the people making revenue vs the people that are making revenue
+PeoplePer200 <- c(nrow(First200), nrow(second200), nrow(third200), nrow(forth200), nrow(fifth200))
+labels200 <- c("$0-200", "$200-400", "$400-600", "$600-800", "$800-1000")
+dataFor200 <- data.frame(labels200, PeoplePer200)
+```
+
+
+```{r, echo=FALSE}
+#Creating graph to look at the distribution of people per $1,000 groupings
+ggplot(data = dataFor200, aes(y=PeoplePer200, x = labels200)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = PeoplePer200), vjust = 1.6, color = "white", size = 3) +
+  theme_minimal() +
+  scale_x_discrete(limits = dataFor200$labels200) +
+  labs(x = "Revenue Increments", y = "Number of Users")
+nrow(First1k)
+min(time_frame1k$cancellation_initiated_at)
+max(time_frame1k$cancellation_initiated_at)
+```
+
+**Graph 2.3**
+
+```{r, echo=FALSE}
+nrow(First200) / nrow(df) * 100
+```
+About 74.91% of users that cancel are canceling before they make anymore than $200.
+
+```{r}
+#Determining the time frame of data
+time_frame200 <- df %>% 
+  filter(kajabi_stripe_revenue_in_dollars <= 200)
+```
+
+
+```{r, echo=FALSE}
+#Splitting up data
+
+First200_rev <- subset(Customers_with_Revenue,kajabi_stripe_revenue_in_dollars <= 200 & kajabi_stripe_revenue_in_dollars >= 0)
+second200_rev <- subset(Customers_with_Revenue, kajabi_stripe_revenue_in_dollars <= 400 & kajabi_stripe_revenue_in_dollars >= 200.01)
+third200_rev <- subset(Customers_with_Revenue, kajabi_stripe_revenue_in_dollars <= 600 & kajabi_stripe_revenue_in_dollars >= 400.01)
+forth200_rev <- subset(Customers_with_Revenue, kajabi_stripe_revenue_in_dollars <= 800 & kajabi_stripe_revenue_in_dollars >= 600.01)
+fifth200_rev <- subset(Customers_with_Revenue, kajabi_stripe_revenue_in_dollars <= 1000 & kajabi_stripe_revenue_in_dollars >= 800.01)
+```
+
+
+```{r, echo=FALSE}
+#Building data to graph
+PeoplePer200_rev <- c(nrow(no_revenue), nrow(First200_rev), nrow(second200_rev), nrow(third200_rev), nrow(forth200_rev), nrow(fifth200_rev))
+labels200_rev <- c("$0", "$0.01-200", "$200-400", "$400-600", "$600-800", "$800-1000")
+dataFor200_rev <- data.frame(labels200_rev, PeoplePer200_rev)
+```
+
+
+
+```{r, echo=FALSE}
+#Graphing the data
+ggplot(data = dataFor200_rev, aes(y=PeoplePer200_rev, x = labels200_rev)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = PeoplePer200_rev), vjust = 1.6, color = "white", size = 3) +
+  theme_minimal() +
+  scale_x_discrete(limits = dataFor200_rev$labels200_rev) +
+  labs(x = "Revenue Increments", y = "Number of Users")
+nrow(First200)
+min(time_frame200$cancellation_initiated_at)
+max(time_frame200$cancellation_initiated_at)
+```
+
+**Graph 2.4**
+
+```{r, echo=FALSE}
+#Splitting up data
+
+First1k_rev <- subset(Customers_with_Revenue,kajabi_stripe_revenue_in_dollars <= 1000.99 & kajabi_stripe_revenue_in_dollars >= 0)
+second1k_rev <- subset(Customers_with_Revenue, kajabi_stripe_revenue_in_dollars <= 2000.99 & kajabi_stripe_revenue_in_dollars >= 1001)
+third1k_rev <- subset(Customers_with_Revenue, kajabi_stripe_revenue_in_dollars <= 3000.99 & kajabi_stripe_revenue_in_dollars >= 2001)
+forth1k_rev <- subset(Customers_with_Revenue, kajabi_stripe_revenue_in_dollars <= 4000.99 & kajabi_stripe_revenue_in_dollars >= 3001)
+fifth1k_rev <- subset(Customers_with_Revenue, kajabi_stripe_revenue_in_dollars <= 5000.99 & kajabi_stripe_revenue_in_dollars >= 4001)
+extra <- subset(Customers_with_Revenue, kajabi_stripe_revenue_in_dollars > 5000)
+```
+
+
+```{r, echo=FALSE}
+#Building data to graph
+PeoplePer1k_rev <- c(nrow(no_revenue), nrow(First1k_rev), nrow(second1k_rev), nrow(third1k_rev), nrow(forth1k_rev), nrow(fifth1k_rev), nrow(extra))
+labels1k_rev <- c("$0", "$0.01-1000", "$1001-2000", "$2001-3000", "$3001-4000", "$4001-5000", "$5000 +")
+dataFor1k_rev <- data.frame(labels1k_rev, PeoplePer1k_rev)
+```
+
+```{r}
+#Determining the time frame of data
+time_frame5k_rev <- Customers_with_Revenue %>% 
+  filter(kajabi_stripe_revenue_in_dollars <= 5000)
+```
+
+
+```{r, echo=FALSE}
+#Graphing the data
+ggplot(data = dataFor1k_rev, aes(y=PeoplePer1k_rev, x = labels1k_rev)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = PeoplePer1k_rev), vjust = 1.6, color = "white", size = 3) +
+  theme_minimal() +
+  scale_x_discrete(limits = dataFor1k_rev$labels1k_rev) +
+  labs(x = "Revenue Increments", y = "Number of Users")
+nrow(time_frame5k_rev) + nrow(no_revenue)
+min(df$cancellation_initiated_at)
+max(df$cancellation_initiated_at)
+nrow(no_revenue) / nrow(df) *100
+nrow(First1k_rev) / nrow(df) *100
+nrow(second1k_rev) / nrow(df) *100
+nrow(third1k_rev) / nrow(df) *100
+nrow(forth1k_rev) / nrow(df) *100
+nrow(fifth1k_rev) / nrow(df) *100
+nrow(extra) / nrow(df) *100
+
+nrow(third1k_rev) 
+nrow(forth1k_rev) 
+nrow(fifth1k_rev)
+nrow(extra)
+```
+
+**Graph 2.5**
+
+
+## Analysis of Pie Charts and Bar Plots:
+These pie charts that display the reasoning why most users are terminating their accounts are largely made up of those that feel they are not ready. Within the full data set (Graph 1.1) and the data set of just those that made no revenue (Graph 1.5), there are about 36% in both of these groups that feel they are not ready. Even with the data set of users that had made revenue, about 31% of them felt they were still not ready. This combined with nearly 2/3 of the users that canceled had zero revenue shows that there are problems with the users learning how to effectively use the platform. Looking at Graph 2.5, once users began to generate a revenue between \$0.01-$1000 there was a drop of about a third of the cancellations than that of the no revenue group.
+
+This can possibly be solved by teaching the users how to better use the platform to generate revenue or extending the trial period in order to give more time for the user to get their website situated and operational before they begin to incur costs. Another possible solution is having a week where the user can be set up with Kajabi University, learn how to operate a successful website for their business and then begin their trial period. 
+```{r, echo=FALSE}
+#Determining the amount of money that the users that canceled are making per day
+avg_days <- df %>% 
+  summarise(days = mean(Days.Since.Acct.Creation))
+avg_days_rev <- Customers_with_Revenue %>% 
+  summarise(days = mean(Days.Since.Acct.Creation))
+```
+
+```{r, echo=FALSE}
+#Determining the average income per day for the full data set and then for just those who made some revenue
+avg_income_per_day <- avg / avg_days
+avg_income_per_day_rev <- avg_w_revenue / avg_days_rev
+```
+
+
+**Comment:** If there was a breakdown of the daily revenues of users we would be able to get a better analysis of the amount that an average user would be making within their first few days to try and see where the best time to make the trial length to. As a means of getting some inkling into determining the best length of the trial period we will be using the average income for users over the trial period length.
+
+```{r, echo=FALSE}
+#Getting a tally of the number of cancellations per trial length period
+trial_length_cancelations <- df %>% 
+  group_by(Trial.Duration) %>% 
+  tally() %>% 
+  arrange(desc(n)) %>% 
+  top_n(4, n)
+trial_length_cancelations
+```
+The four most common trial duration is 14, 28, 29 and 30 days. 
+
+**Comment:** If the information on the number of users that were given each trial duration, these numbers could then be used to calculate a ratio that allows us to tell which trial length period has the lowest/highest cancellation rates.
+
+## Revenue Predictions for Top 4 Trial Periods
+
+### 14 days
+
+```{r, echo=FALSE}
+#Determining how much the average user that cancel makes in about 14 days
+ft <- avg_income_per_day * 14
+ft[1,1]
+```
+
+
+### 28 days
+
+```{r, echo=FALSE}
+te <- avg_income_per_day * 28
+avg_income_per_day_rev *28
+te[1,1]
+```
+
+
+### 29 days
+```{r, echo=FALSE}
+tn <- avg_income_per_day * 29
+tn[1,1]
+```
+
+
+### 30 days
+
+```{r, echo=FALSE}
+th <- avg_income_per_day * 30
+th[1,1]
+```
+
+
+# Analysis of predictions:
+Based on the average revenues that these canceled accounts were generating and the average days that these accounts were active for, I calculated an estimate for the average per day income for an account that would cancel. From this you are able to see that with only a 14 day trial period, it would not seem worth it for these users to enter into a $149 dollar monthly cost for the basic plan. Giving the users one of the longer trial periods may allow for these consumers to gather up or start to generate revenue, which will likely incentivize them to continue their memberships for longer.
+
+
+
+
+
+
